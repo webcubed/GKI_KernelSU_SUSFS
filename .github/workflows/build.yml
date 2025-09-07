@@ -1,510 +1,479 @@
 name: Kernel Build Process
 permissions:
-  contents: write
-  actions: write 
+    contents: write
+    actions: write
 
 on:
-  workflow_call:
-    inputs:
-      use_make:
-        required: true
-        type: boolean
-      android_version:
-        required: true
-        type: string
-      kernel_version:
-        required: true
-        type: string
-      sub_level:
-        required: true
-        type: string
-      os_patch_level:
-        required: true
-        type: string
+    workflow_call:
+        inputs:
+            use_make:
+                required: true
+                type: boolean
+            android_version:
+                required: true
+                type: string
+            kernel_version:
+                required: true
+                type: string
+            sub_level:
+                required: true
+                type: string
+            os_patch_level:
+                required: true
+                type: string
 
-      revision:
-        required: false
-        type: string
+            revision:
+                required: false
+                type: string
 
 jobs:
-  build-gki:
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
+    build-gki:
+        runs-on: ubuntu-latest
+        timeout-minutes: 120
 
-    steps:
-      # # - name: Maximize Build Space
-        # uses: AdityaGarg8/remove-unwanted-software@v5
-        # with:
-          # remove-dotnet: 'true'          # Frees ~2 GB
-          # remove-android: 'true'         # Frees ~9 GB
-          # remove-haskell: 'true'         # Frees ~5.2 GB
-          # remove-codeql: 'true'          # Frees ~5.4 GB
-          # remove-docker-images: 'true'   # Frees ~3.2 GB
-          # remove-large-packages: 'true'  # Frees ~3.1 GB
-          # remove-swapfile: 'true'        # Frees ~4 GB
-          # remove-cached-tools: 'false'   # Avoid unless confirmed safe
-          # verbose: 'true'                # Enable detailed logging
-          
-      - name: Set CONFIG Environment Variable
-        run: |
-          # Set CONFIG dynamically based on inputs values
-          CONFIG="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.sub_level }}"
+        steps:
+            # # - name: Maximize Build Space
+            # uses: AdityaGarg8/remove-unwanted-software@v5
+            # with:
+            # remove-dotnet: 'true'          # Frees ~2 GB
+            # remove-android: 'true'         # Frees ~9 GB
+            # remove-haskell: 'true'         # Frees ~5.2 GB
+            # remove-codeql: 'true'          # Frees ~5.4 GB
+            # remove-docker-images: 'true'   # Frees ~3.2 GB
+            # remove-large-packages: 'true'  # Frees ~3.1 GB
+            # remove-swapfile: 'true'        # Frees ~4 GB
+            # remove-cached-tools: 'false'   # Avoid unless confirmed safe
+            # verbose: 'true'                # Enable detailed logging
 
-          # Set CONFIG as an environment variable for future steps
-          echo "CONFIG=$CONFIG" >> $GITHUB_ENV
+            - name: Set CONFIG Environment Variable
+              run: |
+                  # Set CONFIG dynamically based on inputs values
+                  CONFIG="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.sub_level }}"
 
-          echo "CONFIG set to: $CONFIG"
+                  # Set CONFIG as an environment variable for future steps
+                  echo "CONFIG=$CONFIG" >> $GITHUB_ENV
 
-      - name: Install dependencies
-        if: ${{ inputs.use_make == true }}
-        run: sudo apt update && sudo apt install -y libelf-dev libssl-dev build-essential
+                  echo "CONFIG set to: $CONFIG"
 
-      - name: Install Repo
-        run: |
-          mkdir -p ./git-repo
-          echo "Downloading repo tool..."
-          curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
-          chmod a+rx ./git-repo/repo
-          echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
+            - name: Install dependencies
+              if: ${{ inputs.use_make == true }}
+              run: sudo apt update && sudo apt install -y libelf-dev libssl-dev build-essential
 
-      - name: Clone AnyKernel3 and Other Dependencies
-        run: |
-          echo "Cloning AnyKernel3 and other dependencies..."
-          ANYKERNEL_BRANCH="gki-2.0"
-          SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
-          echo "Using branch for AnyKernel3: $ANYKERNEL_BRANCH"
-          echo "Using branch for SUSFS: $SUSFS_BRANCH"
-          git clone https://github.com/WildKernels/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
-          git clone https://github.com/WildKernels/kernel_patches.git
+            - name: Install Repo
+              run: |
+                  mkdir -p ./git-repo
+                  echo "Downloading repo tool..."
+                  curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
+                  chmod a+rx ./git-repo/repo
+                  echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
 
-      - name: Initialize and Sync Kernel Source
-        run: |
-          echo "Creating folder for configuration: $CONFIG..."
-          mkdir -p "$CONFIG"
-          cd "$CONFIG"
-          echo "Initializing and syncing kernel source..."
-          FORMATTED_BRANCH="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}"
-          $REPO init --depth=1 --u https://android.googlesource.com/kernel/manifest -b common-${FORMATTED_BRANCH} --repo-rev=v2.16
-          REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common ${FORMATTED_BRANCH})
-          DEFAULT_MANIFEST_PATH=.repo/manifests/default.xml
-          if grep -q deprecated <<< $REMOTE_BRANCH; then
-            echo "Found deprecated branch: $FORMATTED_BRANCH"
-            sed -i "s/\"${FORMATTED_BRANCH}\"/\"deprecated\/${FORMATTED_BRANCH}\"/g" $DEFAULT_MANIFEST_PATH
-          fi
-          $REPO --version
-          $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
+            - name: Clone AnyKernel3 and Other Dependencies
+              run: |
+                  echo "Cloning AnyKernel3 and other dependencies..."
+                  ANYKERNEL_BRANCH="gki-2.0"
+                  SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
+                  echo "Using branch for AnyKernel3: $ANYKERNEL_BRANCH"
+                  echo "Using branch for SUSFS: $SUSFS_BRANCH"
+                  git clone https://github.com/WildKernels/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
+                  git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
+                  git clone https://github.com/WildKernels/kernel_patches.git
 
-      - name: Extract Actual Sublevel for LTS Builds
-        if: inputs.sub_level == 'X'
-        run: |
-          echo "Extracting actual sublevel from Makefile for LTS build..."
-          cd "$CONFIG/common"
-          if [ -f "Makefile" ]; then
-            ACTUAL_SUBLEVEL=$(grep '^SUBLEVEL = ' Makefile | awk '{print $3}')
-            if [ -n "$ACTUAL_SUBLEVEL" ]; then
-              echo "Found actual sublevel: $ACTUAL_SUBLEVEL"
-              OLD_CONFIG="$CONFIG"
-              NEW_CONFIG="${{ inputs.android_version }}-${{ inputs.kernel_version }}-$ACTUAL_SUBLEVEL"
-              echo "CONFIG=$NEW_CONFIG" >> $GITHUB_ENV
-              echo "ACTUAL_SUBLEVEL=$ACTUAL_SUBLEVEL" >> $GITHUB_ENV
-              cd ..
-              mv "$OLD_CONFIG" "$NEW_CONFIG"
-              echo "Renamed directory from $OLD_CONFIG to $NEW_CONFIG"
-            else
-              echo "Warning: Could not extract sublevel from Makefile for lts build"
-            fi
-          else
-            echo "Warning: Makefile not found for lts build"
-          fi
+            - name: Initialize and Sync Kernel Source
+              run: |
+                  echo "Creating folder for configuration: $CONFIG..."
+                  mkdir -p "$CONFIG"
+                  cd "$CONFIG"
+                  echo "Initializing and syncing kernel source..."
+                  FORMATTED_BRANCH="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}"
+                  $REPO init --depth=1 --u https://android.googlesource.com/kernel/manifest -b common-${FORMATTED_BRANCH} --repo-rev=v2.16
+                  REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common ${FORMATTED_BRANCH})
+                  DEFAULT_MANIFEST_PATH=.repo/manifests/default.xml
+                  if grep -q deprecated <<< $REMOTE_BRANCH; then
+                    echo "Found deprecated branch: $FORMATTED_BRANCH"
+                    sed -i "s/\"${FORMATTED_BRANCH}\"/\"deprecated\/${FORMATTED_BRANCH}\"/g" $DEFAULT_MANIFEST_PATH
+                  fi
+                  $REPO --version
+                  $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
 
-      - name: Apply glibc 2.38 Compatibility Fix
-        if: inputs.android_version == 'android14' && inputs.kernel_version == '6.1'
-        run: |
-          if [ ! -e build/build.sh ]; then 
-            GLIBC_VERSION=$(ldd --version 2>/dev/null | head -n 1 | awk '{print $NF}') 
-            echo "GLIBC_VERSION: $GLIBC_VERSION" 
-            if [ "$(printf '%s\n' "2.38" "$GLIBC_VERSION" | sort -V | head -n1)" = "2.38" ]; then 
-              echo "Patching resolve_btfids/Makefile" 
-              cd $CONFIG/common/ && sed -i '/\$(Q)\$(MAKE) -C \$(SUBCMD_SRC) OUTPUT=\$(abspath \$(dir \$@))\/ \$(abspath \$@)/s//$(Q)$(MAKE) -C $(SUBCMD_SRC) EXTRA_CFLAGS="$(CFLAGS)" OUTPUT=$(abspath $(dir $@))\/ $(abspath $@)/' tools/bpf/resolve_btfids/Makefile || echo "No patch needed." 
-            fi 
-          fi
+            - name: Extract Actual Sublevel for LTS Builds
+              if: inputs.sub_level == 'X'
+              run: |
+                  echo "Extracting actual sublevel from Makefile for LTS build..."
+                  cd "$CONFIG/common"
+                  if [ -f "Makefile" ]; then
+                    ACTUAL_SUBLEVEL=$(grep '^SUBLEVEL = ' Makefile | awk '{print $3}')
+                    if [ -n "$ACTUAL_SUBLEVEL" ]; then
+                      echo "Found actual sublevel: $ACTUAL_SUBLEVEL"
+                      OLD_CONFIG="$CONFIG"
+                      NEW_CONFIG="${{ inputs.android_version }}-${{ inputs.kernel_version }}-$ACTUAL_SUBLEVEL"
+                      echo "CONFIG=$NEW_CONFIG" >> $GITHUB_ENV
+                      echo "ACTUAL_SUBLEVEL=$ACTUAL_SUBLEVEL" >> $GITHUB_ENV
+                      cd ..
+                      mv "$OLD_CONFIG" "$NEW_CONFIG"
+                      echo "Renamed directory from $OLD_CONFIG to $NEW_CONFIG"
+                    else
+                      echo "Warning: Could not extract sublevel from Makefile for lts build"
+                    fi
+                  else
+                    echo "Warning: Makefile not found for lts build"
+                  fi
 
-      - name: Fix Less Then 6.6.50 Builds
-        if: inputs.android_version == 'android15' && inputs.kernel_version == '6.6'
-        run: |
-          cd "$CONFIG/common"
-          if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
-              sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
-          else
-              echo "Line already present. Skipping insert."
-          fi
+            - name: Apply glibc 2.38 Compatibility Fix
+              if: inputs.android_version == 'android14' && inputs.kernel_version == '6.1'
+              run: |
+                  if [ ! -e build/build.sh ]; then 
+                    GLIBC_VERSION=$(ldd --version 2>/dev/null | head -n 1 | awk '{print $NF}') 
+                    echo "GLIBC_VERSION: $GLIBC_VERSION" 
+                    if [ "$(printf '%s\n' "2.38" "$GLIBC_VERSION" | sort -V | head -n1)" = "2.38" ]; then 
+                      echo "Patching resolve_btfids/Makefile" 
+                      cd $CONFIG/common/ && sed -i '/\$(Q)\$(MAKE) -C \$(SUBCMD_SRC) OUTPUT=\$(abspath \$(dir \$@))\/ \$(abspath \$@)/s//$(Q)$(MAKE) -C $(SUBCMD_SRC) EXTRA_CFLAGS="$(CFLAGS)" OUTPUT=$(abspath $(dir $@))\/ $(abspath $@)/' tools/bpf/resolve_btfids/Makefile || echo "No patch needed." 
+                    fi 
+                  fi
 
-      - name: Apply ptrace patch for older kernels
-        if: fromJSON(inputs.kernel_version) < 5.16
-        run: |
-          cd "$CONFIG/common"
-          echo "Patching ptrace!"
-          patch -p1 -F 3 < "../../kernel_patches/gki_ptrace.patch"
+            - name: Apply ptrace patch for older kernels
+              if: fromJSON(inputs.kernel_version) < 5.16
+              run: |
+                  cd "$CONFIG/common"
+                  echo "Patching ptrace!"
+                  patch -p1 -F 3 < "../../kernel_patches/gki_ptrace.patch"
 
-      - name: Add KernelSU
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG"
-      
-          echo "Adding WKSU..."
-          curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/wild/kernel/setup.sh" | bash -s wild
-          
-      - name: Apply SUSFS Patches for KernelSU Variants
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG"
-          
-          echo "Applying SUSFS patches..."
-          
-          # Copy SUSFS patches
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
-          cd common
-          patch -p1 --forward < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch
-          cd ..
-          cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-          cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-          
-          echo "Applying SUSFS patches for WKSU..."
-          cd ./Wild_KSU
-          cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-          patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
-          
-          cp ../../kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch ./
-          patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
-          
-          cp ../../kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
-          patch -p1 --forward < fix_rules.c.patch
+            - name: Add KernelSU
+              run: |
+                  echo "Changing to configuration directory: $CONFIG..."
+                  cd "$CONFIG"
 
-          cp ../../kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch ./
-          patch -p1 --forward < fix_sucompat.c.patch
+                  echo "Adding SukiSU..."
+                  curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
 
-          cp ../../kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_kernel_compat.c.patch ./
-          patch -p1 --forward < fix_kernel_compat.c.patch
+            - name: Apply SUSFS Patches for KernelSU Variants
+              run: |
+                  echo "Changing to configuration directory: $CONFIG..."
+                  cd "$CONFIG"
 
-      - name: Getting KernelSU Version
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG"
-          
-          echo "Getting KSU Version for WKSU..."
-          cd ./Wild_KSU/kernel
-          BASE_VERSION=10200
-          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" $BASE_VERSION)
-          
-          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-          
-      - name: Apply Hooks Patches
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/common"
-          
-          echo "Applying hooks for WKSU..."
-          cp ../../kernel_patches/wild/hooks/scope_min_manual_hooks_v1.4.patch ./
-          patch -p1 --forward -F 3 < scope_min_manual_hooks_v1.4.patch
+                  echo "Applying SUSFS patches..."
 
-      - name: Apply Hide Stuff Patches
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/common"
-          cp ../../kernel_patches/69_hide_stuff.patch ./
-          patch -p1 --forward -F 3 < 69_hide_stuff.patch
+                  # Copy SUSFS patches
+                  cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
+                  cd common
+                  patch -p1 --forward < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch
+                  cd ..
+                  cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
+                  cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
 
-      - name: Fix WiFi and Bluetooth on Samsung 6.6 GKI devices
-        if: ${{ ( inputs.kernel_version == '6.6' ) }}
-        run: |
-          echo "[+] Adding Samsung KDP exported symbols to abi_gki_aarch64_galaxy"
-          SYMBOL_LIST=$CONFIG/common/android/abi_gki_aarch64_galaxy
-          echo "kdp_set_cred_non_rcu" >> $SYMBOL_LIST
-          echo "kdp_usecount_dec_and_test" >> $SYMBOL_LIST
-          echo "kdp_usecount_inc" >> $SYMBOL_LIST
-          echo "[+] Adding Samsung KDP exported symbols definition to abi_gki_aarch64.stg"
-          cd $CONFIG/common
-          PATCH="../../kernel_patches/samsung/min_kdp/add-min_kdp-symbols.patch"
-          if patch -p1 --dry-run < $PATCH; then
-            echo "[+] Successfully added Samsung KDP exported symbols definition to abi_gki_aarch64.stg"
-            patch -p1 --no-backup-if-mismatch < $PATCH
-          fi
-          echo "[+] Adding Samsung minimal KDP driver"
-          cd drivers
-          cp "../../../kernel_patches/samsung/min_kdp/min_kdp.c" min_kdp.c
-          echo "obj-y += min_kdp.o" >> Makefile
+                  echo "Applying SUSFS patches for WKSU..."
+                  cd ./SukiSU-Ultra
+                  cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+                  patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
 
+                  cp ../../kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch ./
+                  patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
 
-      - name: Add Configuration Settings
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG"
-          echo "Adding configuration settings to gki_defconfig..."
+                  cp ../../kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
+                  patch -p1 --forward < fix_rules.c.patch
 
-          # Add KSU configuration settings
-          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
-          echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
-                    
-          # Add additional tmpfs config setting
-          echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  cp ../../kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch ./
+                  patch -p1 --forward < fix_sucompat.c.patch
 
-          # Add additional config setting
-          echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  cp ../../kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_kernel_compat.c.patch ./
+                  patch -p1 --forward < fix_kernel_compat.c.patch
 
-          # Add BBR Config
-          echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig 
-          echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NET_SCH_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig 
+            - name: Getting KernelSU Version
+              run: |
+                  echo "Changing to configuration directory: $CONFIG..."
+                  cd "$CONFIG"
 
-          # === ipset support ===
-          echo "CONFIG_IP_SET=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_MAX=256" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_BITMAP_IP=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_BITMAP_IPMAC=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_BITMAP_PORT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_IP=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_IPPORT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_IPPORTIP=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_IPPORTNET=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_NET=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_NETNET=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_NETPORT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_NETIFACE=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "Getting KSU Version for WKSU..."
+                  cd ./SukiSU-Ultra/kernel
+                  BASE_VERSION=10200
+                  KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" $BASE_VERSION)
 
-          # Remove check_defconfig
-          sed -i 's/check_defconfig//' ./common/build.config.gki
+                  echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
 
-      - name: Add SUSFS Configuration Settings
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG"
+            - name: Apply Hooks Patches
+              run: |
+                  echo "Changing to configuration directory: $CONFIG..."
+                  cd "$CONFIG/common"
 
-          # Add SUSFS configuration settings
-          echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "Applying hooks for WKSU..."
+                  cp ../../kernel_patches/wild/hooks/scope_min_manual_hooks_v1.4.patch ./
+                  patch -p1 --forward -F 3 < scope_min_manual_hooks_v1.4.patch
 
-          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
+            - name: Apply Hide Stuff Patches
+              run: |
+                  echo "Changing to configuration directory: $CONFIG..."
+                  cd "$CONFIG/common"
+                  cp ../../kernel_patches/69_hide_stuff.patch ./
+                  patch -p1 --forward -F 3 < 69_hide_stuff.patch
 
-      - name: Change Kernel Name
-        if: ${{ inputs.use_make == false }}
-        run: |
-          cd "$CONFIG"
-          if [ -f "build/build.sh" ]; then
-              perl -pi -e 's/-dirty//' ./common/scripts/setlocalversion
-              perl -0777 -pi -e 's/(echo "\$res")(?!.*echo "\$res")/echo "\$res-WKSU-\$KSUVER-SUSFS-v1.5.9-Wild"/s' ./common/scripts/setlocalversion
-              perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sun Apr 20 04:20:00 UTC 2025"}' ./common/scripts/mkcompile_h
-          else
-              #Remove -maybe-dirty
-              perl -pi -e 's/-maybe-dirty//g' ./build/kernel/kleaf/impl/stamp.bzl
-              
-              #Set Kernel Name
-              echo "CONFIG_LOCALVERSION=\"-WKSU-$KSUVER-SUSFS-v1.5.9-Wild\"" >> ./common/arch/arm64/configs/gki_defconfig
+            - name: Add Configuration Settings
+              run: |
+                  echo "Changing to configuration directory: $CONFIG..."
+                  cd "$CONFIG"
+                  echo "Adding configuration settings to gki_defconfig..."
 
-              #Set Kernel Timestamp
-              perl -pi -e 's/build-timestamp = \$\(or \$\(KBUILD_BUILD_TIMESTAMP\), \$\(build-timestamp-auto\)\)/build-timestamp = "Sun Apr 20 04:20:00 UTC 2025"/' ./common/init/Makefile
+                  # Add KSU configuration settings
+                  echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-              #Remove Abi Exports and Error
-              rm -rf ./common/android/abi_gki_protected_exports_*
-              perl -pi -e 's/^\s*"protected_exports_list"\s*:\s*"android\/abi_gki_protected_exports_aarch64",\s*$//;' ./common/BUILD.bazel
-          fi
+                  echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
+                            
+                  # Add additional tmpfs config setting
+                  echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-      - name: Build
-        if: ${{ inputs.use_make == false }}
-        run : |
-          set -e
-          set -x
-          cd "$CONFIG"
-          echo "Building the kernel..."
-          if [ -f "build/build.sh" ]; then
-            LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh || exit 1
-          else
-            tools/bazel build --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
-          fi
+                  # Add additional config setting
+                  echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-      - name: Change Kernel Name
-        if: ${{ inputs.use_make == true }}
-        run: |
-          cd "$CONFIG"
-          perl -pi -e 's/-dirty//' ./common/scripts/setlocalversion
-          
-          #Set Kernel Timestamp
-          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sun Apr 20 04:20:00 UTC 2025"}' ./common/scripts/mkcompile_h
-          
-          #Set Kernel Name
-          if [ "${{ inputs.kernel_version }}" = "6.6" ]; then
-            perl -0777 -pi -e 's/(echo "\$\{KERNELVERSION\}\$\{file_localversion\}\$\{config_localversion\}\$\{LOCALVERSION\}\$\{scm_version\}")(?!.*\1)/echo "\$\{KERNELVERSION\}-${{ inputs.android_version }}-🟢-Wild"/s' ./common/scripts/setlocalversion
-          else
-            perl -0777 -pi -e 's/(echo "\$res")(?!.*\1)/echo "\-🟢-Wild"/s' ./common/scripts/setlocalversion
-          fi
-              
-          #Set Kernel Timestamp
-          perl -pi -e 's/build-timestamp = \$\(or \$\(KBUILD_BUILD_TIMESTAMP\), \$\(build-timestamp-auto\)\)/build-timestamp = "Sun Apr 20 04:20:00 UTC 2025"/' ./common/init/Makefile
-              
-          #Remove Abi Exports and Error
-          rm -rf ./common/android/abi_gki_protected_exports_*
-          perl -pi -e 's/^\s*"protected_exports_list"\s*:\s*"android\/abi_gki_protected_exports_aarch64",\s*$//;' ./common/BUILD.bazel
+                  # Add BBR Config
+                  echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig 
+                  echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_NET_SCH_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig 
 
-      - name: Add Build based configs
-        if: ${{ inputs.use_make == true }}
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG"
-          echo "CONFIG_LTO_CLANG_THIN=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_LTO_CLANG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "./common/arch/arm64/configs/gki_defconfig"
-          echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n" >> "./common/arch/arm64/configs/gki_defconfig"
+                  # === ipset support ===
+                  echo "CONFIG_IP_SET=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP_SET_MAX=256" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP_SET_BITMAP_IP=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP_SET_BITMAP_IPMAC=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP_SET_BITMAP_PORT=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP_SET_HASH_IP=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP_SET_HASH_IPPORT=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP_SET_HASH_IPPORTIP=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP_SET_HASH_IPPORTNET=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP_SET_HASH_NET=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP_SET_HASH_NETNET=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP_SET_HASH_NETPORT=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_IP_SET_HASH_NETIFACE=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-      - name: Detect Clang Version from Configs
-        if: ${{ inputs.use_make == true }}
-        shell: bash
-        run: |
-          KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG"
-          DEFCONFIG="$KERNEL_PATH/common/arch/arm64/configs/gki_defconfig"
-          BUILDCONFIG="$KERNEL_PATH/common/build.config.gki"
-          CONSTANTSCONFIG="$KERNEL_PATH/common/build.config.constants"
-          CLANG_VERSION=""
-          CLANG_BIN_PATH=""
-          if grep -q '^CONFIG_CLANG_VERSION=' "$DEFCONFIG" 2>/dev/null; then
-            CLANG_VERSION=$(grep '^CONFIG_CLANG_VERSION=' "$DEFCONFIG" 2>/dev/null | head -n1 | cut -d'=' -f2 | tr -d '"' | xargs)
-          elif grep -q '^CLANG_VERSION=' "$BUILDCONFIG" 2>/dev/null; then
-            CLANG_VERSION=$(grep '^CLANG_VERSION=' "$BUILDCONFIG" 2>/dev/null | head -n1 | cut -d'=' -f2 | xargs)
-          elif grep -q '^CLANG_VERSION=' "$CONSTANTSCONFIG" 2>/dev/null; then
-            CLANG_VERSION=$(grep '^CLANG_VERSION=' "$CONSTANTSCONFIG" 2>/dev/null | head -n1 | cut -d'=' -f2 | xargs)
-            CLANG_VERSION="clang-$CLANG_VERSION"
-          else
-            echo "No clang version found in config, will auto-detect in prebuilts."
-          fi
-          if [ -z "$CLANG_VERSION" ]; then
-            if [ -d "$KERNEL_PATH/prebuilts/clang/host/linux-x86" ]; then
-              CLANG_VERSION=$(ls -d "$KERNEL_PATH"/prebuilts/clang/host/linux-x86/clang-r*/ | tail -n 1 | xargs basename)
-              CLANG_BIN_PATH="$KERNEL_PATH/prebuilts/clang/host/linux-x86/$CLANG_VERSION/bin"
-            elif [ -d "$KERNEL_PATH/prebuilts-master/clang/host/linux-x86" ]; then
-              CLANG_VERSION=$(ls -d "$KERNEL_PATH"/prebuilts-master/clang/host/linux-x86/clang-r*/ | tail -n 1 | xargs basename)
-              CLANG_BIN_PATH="$KERNEL_PATH/prebuilts-master/clang/host/linux-x86/$CLANG_VERSION/bin"
-            else
-              CLANG_VERSION="clang"
-              CLANG_BIN_PATH="$KERNEL_PATH/prebuilts/clang/host/linux-x86/$CLANG_VERSION/bin" # dummy
-            fi
-          else
-            if [ -d "$KERNEL_PATH/prebuilts/clang/host/linux-x86" ]; then
-              CLANG_BIN_PATH="$KERNEL_PATH/prebuilts/clang/host/linux-x86/$CLANG_VERSION/bin"
-            else
-              CLANG_BIN_PATH="$KERNEL_PATH/prebuilts-master/clang/host/linux-x86/$CLANG_VERSION/bin"
-            fi
-          fi
-          echo "Detected CLANG_VERSION: $CLANG_VERSION"
-          echo "CLANG_VERSION=$CLANG_VERSION" >> $GITHUB_ENV
-          echo "CLANG_BIN_PATH=$CLANG_BIN_PATH" >> $GITHUB_ENV
+                  # Remove check_defconfig
+                  sed -i 's/check_defconfig//' ./common/build.config.gki
 
-      - name: Build Kernel
-        if: ${{ inputs.use_make == true }}  
-        shell: bash
-        run: |
-          KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG"
-          CLANG_BIN_PATH="${{ env.CLANG_BIN_PATH }}"
-          CLANG_VERSION="${{ env.CLANG_VERSION }}"
-          if [ -d "$CLANG_BIN_PATH" ] && [ -x "$CLANG_BIN_PATH/clang" ]; then
-            echo "Adding Clang to PATH: $CLANG_BIN_PATH"
-            export PATH="$CLANG_BIN_PATH:$PATH"
-            SELECTED_CLANG="$CLANG_BIN_PATH/clang"
-          elif command -v clang >/dev/null 2>&1; then
-            SELECTED_CLANG="$(command -v clang)"
-            echo "Using system Clang: $SELECTED_CLANG"
-            exit 1
-          else
-            echo "Error: No valid Clang binary found"
-            exit 1
-          fi
-          echo "Using Clang version: $($SELECTED_CLANG --version | head -n1)"
-          LLVM_TOOLS="clang ld.lld llvm-ar llvm-objcopy llvm-objdump llvm-nm"
-          MISSING_TOOLS=""
-          for tool in $LLVM_TOOLS; do
-            if ! command -v $tool >/dev/null 2>&1; then
-              MISSING_TOOLS="$MISSING_TOOLS $tool"
-            fi
-          done
-          if [ -n "$MISSING_TOOLS" ]; then
-            echo "Installing missing LLVM tools:$MISSING_TOOLS"
-            sudo apt-get update
-            sudo apt-get install -yq --no-install-recommends llvm
-            for tool in $MISSING_TOOLS; do
-              if ! command -v $tool >/dev/null 2>&1; then
-                echo "Error: Failed to install $tool"
-                exit 1
-              fi
-            done
-          fi
-          KERNEL_VERSION="${{ inputs.kernel_version }}"
-          if [[ "$KERNEL_VERSION" == "5.10" ]]; then
-            USE_LLVM_IAS=true
-          fi
-          cd "$KERNEL_PATH/common" || exit 1
-          MAKE_ARGS="LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- \
-            RUSTC=$KERNEL_PATH/prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
-            PAHOLE=$KERNEL_PATH/prebuilts/kernel-build-tools/linux-x86/bin/pahole \
-            LD=ld.lld HOSTLD=ld.lld"
-          if [[ -v USE_LLVM_IAS ]]; then
-            MAKE_ARGS="LLVM_IAS=1 $MAKE_ARGS"
-          fi
-          
-          make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2 -flto=thin -fno-stack-protector" gki_defconfig || exit 1
-          make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2 -flto=thin -fno-stack-protector" || exit 1
+            - name: Add SUSFS Configuration Settings
+              run: |
+                  echo "Changing to configuration directory: $CONFIG..."
+                  cd "$CONFIG"
 
-      - name: Create Kernel ZIP
-        run: |
-          echo "Creating kernel ZIP..."
-          
-          if [ ${{ inputs.use_make }} == true ]; then
-            # Copy Image for make=true builds
-            cp $CONFIG/common/out/arch/arm64/boot/Image AnyKernel3/Image
-          else
-            # Copy Image for make=false builds based on Android version
-            if [ "${{ inputs.android_version }}" = "android12" ] || [ "${{ inputs.android_version }}" = "android13" ]; then
-              echo "Copying images for Android 12/13..."
-              cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image AnyKernel3/Image
-            elif [ "${{ inputs.android_version }}" = "android14" ] || [ "${{ inputs.android_version }}" = "android15" ]; then
-              echo "Copying images for Android 14/15..."
-              cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image AnyKernel3/Image
-            fi
-          fi
-          
-          # Create ZIP file
-          cd AnyKernel3
-          # Use actual sublevel for LTS builds if available
-          SUBLEVEL_FOR_NAME="${{ inputs.sub_level }}"
-          if [ -n "$ACTUAL_SUBLEVEL" ]; then
-            SUBLEVEL_FOR_NAME="$ACTUAL_SUBLEVEL"
-          fi
-          ZIP_NAME="WKSU-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.$SUBLEVEL_FOR_NAME-${{ inputs.os_patch_level }}-AnyKernel3.zip"
-          echo "Creating zip file: $ZIP_NAME..."
-          zip -r "../$ZIP_NAME" ./*
-  
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: WKSU-kernel-${{ env.CONFIG }}
-          path: |
-            *.zip
-            *.img.gz
-            *Image*
+                  # Add SUSFS configuration settings
+                  echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+
+                  echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
+
+            - name: Change Kernel Name
+              if: ${{ inputs.use_make == false }}
+              run: |
+                  cd "$CONFIG"
+                  if [ -f "build/build.sh" ]; then
+                      perl -pi -e 's/-dirty//' ./common/scripts/setlocalversion
+                      perl -0777 -pi -e 's/(echo "\$res")(?!.*echo "\$res")/echo "\$res-WKSU-\$KSUVER-SUSFS-v1.5.9-Wild"/s' ./common/scripts/setlocalversion
+                      perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sun Apr 20 04:20:00 UTC 2025"}' ./common/scripts/mkcompile_h
+                  else
+                      #Remove -maybe-dirty
+                      perl -pi -e 's/-maybe-dirty//g' ./build/kernel/kleaf/impl/stamp.bzl
+                      
+                      #Set Kernel Name
+                      echo "CONFIG_LOCALVERSION=\"-WKSU-$KSUVER-SUSFS-v1.5.9-Wild\"" >> ./common/arch/arm64/configs/gki_defconfig
+
+                      #Set Kernel Timestamp
+                      perl -pi -e 's/build-timestamp = \$\(or \$\(KBUILD_BUILD_TIMESTAMP\), \$\(build-timestamp-auto\)\)/build-timestamp = "Sun Apr 20 04:20:00 UTC 2025"/' ./common/init/Makefile
+
+                      #Remove Abi Exports and Error
+                      rm -rf ./common/android/abi_gki_protected_exports_*
+                      perl -pi -e 's/^\s*"protected_exports_list"\s*:\s*"android\/abi_gki_protected_exports_aarch64",\s*$//;' ./common/BUILD.bazel
+                  fi
+
+            - name: Build
+              if: ${{ inputs.use_make == false }}
+              run: |
+                  set -e
+                  set -x
+                  cd "$CONFIG"
+                  echo "Building the kernel..."
+                  if [ -f "build/build.sh" ]; then
+                    LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh || exit 1
+                  else
+                    tools/bazel build --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
+                  fi
+
+            - name: Change Kernel Name
+              if: ${{ inputs.use_make == true }}
+              run: |
+                  cd "$CONFIG"
+                  perl -pi -e 's/-dirty//' ./common/scripts/setlocalversion
+
+                  #Set Kernel Timestamp
+                  perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sun Apr 20 04:20:00 UTC 2025"}' ./common/scripts/mkcompile_h
+
+                  #Set Kernel Name
+                  if [ "${{ inputs.kernel_version }}" = "6.6" ]; then
+                    perl -0777 -pi -e 's/(echo "\$\{KERNELVERSION\}\$\{file_localversion\}\$\{config_localversion\}\$\{LOCALVERSION\}\$\{scm_version\}")(?!.*\1)/echo "\$\{KERNELVERSION\}-${{ inputs.android_version }}-🟢-Wild"/s' ./common/scripts/setlocalversion
+                  else
+                    perl -0777 -pi -e 's/(echo "\$res")(?!.*\1)/echo "\-🟢-Wild"/s' ./common/scripts/setlocalversion
+                  fi
+                      
+                  #Set Kernel Timestamp
+                  perl -pi -e 's/build-timestamp = \$\(or \$\(KBUILD_BUILD_TIMESTAMP\), \$\(build-timestamp-auto\)\)/build-timestamp = "Sun Apr 20 04:20:00 UTC 2025"/' ./common/init/Makefile
+                      
+                  #Remove Abi Exports and Error
+                  rm -rf ./common/android/abi_gki_protected_exports_*
+                  perl -pi -e 's/^\s*"protected_exports_list"\s*:\s*"android\/abi_gki_protected_exports_aarch64",\s*$//;' ./common/BUILD.bazel
+
+            - name: Add Build based configs
+              if: ${{ inputs.use_make == true }}
+              run: |
+                  echo "Changing to configuration directory: $CONFIG..."
+                  cd "$CONFIG"
+                  echo "CONFIG_LTO_CLANG_THIN=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_LTO_CLANG=y" >> ./common/arch/arm64/configs/gki_defconfig
+                  echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "./common/arch/arm64/configs/gki_defconfig"
+                  echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=n" >> "./common/arch/arm64/configs/gki_defconfig"
+
+            - name: Detect Clang Version from Configs
+              if: ${{ inputs.use_make == true }}
+              shell: bash
+              run: |
+                  KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG"
+                  DEFCONFIG="$KERNEL_PATH/common/arch/arm64/configs/gki_defconfig"
+                  BUILDCONFIG="$KERNEL_PATH/common/build.config.gki"
+                  CONSTANTSCONFIG="$KERNEL_PATH/common/build.config.constants"
+                  CLANG_VERSION=""
+                  CLANG_BIN_PATH=""
+                  if grep -q '^CONFIG_CLANG_VERSION=' "$DEFCONFIG" 2>/dev/null; then
+                    CLANG_VERSION=$(grep '^CONFIG_CLANG_VERSION=' "$DEFCONFIG" 2>/dev/null | head -n1 | cut -d'=' -f2 | tr -d '"' | xargs)
+                  elif grep -q '^CLANG_VERSION=' "$BUILDCONFIG" 2>/dev/null; then
+                    CLANG_VERSION=$(grep '^CLANG_VERSION=' "$BUILDCONFIG" 2>/dev/null | head -n1 | cut -d'=' -f2 | xargs)
+                  elif grep -q '^CLANG_VERSION=' "$CONSTANTSCONFIG" 2>/dev/null; then
+                    CLANG_VERSION=$(grep '^CLANG_VERSION=' "$CONSTANTSCONFIG" 2>/dev/null | head -n1 | cut -d'=' -f2 | xargs)
+                    CLANG_VERSION="clang-$CLANG_VERSION"
+                  else
+                    echo "No clang version found in config, will auto-detect in prebuilts."
+                  fi
+                  if [ -z "$CLANG_VERSION" ]; then
+                    if [ -d "$KERNEL_PATH/prebuilts/clang/host/linux-x86" ]; then
+                      CLANG_VERSION=$(ls -d "$KERNEL_PATH"/prebuilts/clang/host/linux-x86/clang-r*/ | tail -n 1 | xargs basename)
+                      CLANG_BIN_PATH="$KERNEL_PATH/prebuilts/clang/host/linux-x86/$CLANG_VERSION/bin"
+                    elif [ -d "$KERNEL_PATH/prebuilts-master/clang/host/linux-x86" ]; then
+                      CLANG_VERSION=$(ls -d "$KERNEL_PATH"/prebuilts-master/clang/host/linux-x86/clang-r*/ | tail -n 1 | xargs basename)
+                      CLANG_BIN_PATH="$KERNEL_PATH/prebuilts-master/clang/host/linux-x86/$CLANG_VERSION/bin"
+                    else
+                      CLANG_VERSION="clang"
+                      CLANG_BIN_PATH="$KERNEL_PATH/prebuilts/clang/host/linux-x86/$CLANG_VERSION/bin" # dummy
+                    fi
+                  else
+                    if [ -d "$KERNEL_PATH/prebuilts/clang/host/linux-x86" ]; then
+                      CLANG_BIN_PATH="$KERNEL_PATH/prebuilts/clang/host/linux-x86/$CLANG_VERSION/bin"
+                    else
+                      CLANG_BIN_PATH="$KERNEL_PATH/prebuilts-master/clang/host/linux-x86/$CLANG_VERSION/bin"
+                    fi
+                  fi
+                  echo "Detected CLANG_VERSION: $CLANG_VERSION"
+                  echo "CLANG_VERSION=$CLANG_VERSION" >> $GITHUB_ENV
+                  echo "CLANG_BIN_PATH=$CLANG_BIN_PATH" >> $GITHUB_ENV
+
+            - name: Build Kernel
+              if: ${{ inputs.use_make == true }}
+              shell: bash
+              run: |
+                  KERNEL_PATH="$GITHUB_WORKSPACE/$CONFIG"
+                  CLANG_BIN_PATH="${{ env.CLANG_BIN_PATH }}"
+                  CLANG_VERSION="${{ env.CLANG_VERSION }}"
+                  if [ -d "$CLANG_BIN_PATH" ] && [ -x "$CLANG_BIN_PATH/clang" ]; then
+                    echo "Adding Clang to PATH: $CLANG_BIN_PATH"
+                    export PATH="$CLANG_BIN_PATH:$PATH"
+                    SELECTED_CLANG="$CLANG_BIN_PATH/clang"
+                  elif command -v clang >/dev/null 2>&1; then
+                    SELECTED_CLANG="$(command -v clang)"
+                    echo "Using system Clang: $SELECTED_CLANG"
+                    exit 1
+                  else
+                    echo "Error: No valid Clang binary found"
+                    exit 1
+                  fi
+                  echo "Using Clang version: $($SELECTED_CLANG --version | head -n1)"
+                  LLVM_TOOLS="clang ld.lld llvm-ar llvm-objcopy llvm-objdump llvm-nm"
+                  MISSING_TOOLS=""
+                  for tool in $LLVM_TOOLS; do
+                    if ! command -v $tool >/dev/null 2>&1; then
+                      MISSING_TOOLS="$MISSING_TOOLS $tool"
+                    fi
+                  done
+                  if [ -n "$MISSING_TOOLS" ]; then
+                    echo "Installing missing LLVM tools:$MISSING_TOOLS"
+                    sudo apt-get update
+                    sudo apt-get install -yq --no-install-recommends llvm
+                    for tool in $MISSING_TOOLS; do
+                      if ! command -v $tool >/dev/null 2>&1; then
+                        echo "Error: Failed to install $tool"
+                        exit 1
+                      fi
+                    done
+                  fi
+                  KERNEL_VERSION="${{ inputs.kernel_version }}"
+                  if [[ "$KERNEL_VERSION" == "5.10" ]]; then
+                    USE_LLVM_IAS=true
+                  fi
+                  cd "$KERNEL_PATH/common" || exit 1
+                  MAKE_ARGS="LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- \
+                    RUSTC=$KERNEL_PATH/prebuilts/rust/linux-x86/1.73.0b/bin/rustc \
+                    PAHOLE=$KERNEL_PATH/prebuilts/kernel-build-tools/linux-x86/bin/pahole \
+                    LD=ld.lld HOSTLD=ld.lld"
+                  if [[ -v USE_LLVM_IAS ]]; then
+                    MAKE_ARGS="LLVM_IAS=1 $MAKE_ARGS"
+                  fi
+
+                  make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2 -flto=thin -fno-stack-protector" gki_defconfig || exit 1
+                  make -j$(nproc --all) O=out $MAKE_ARGS KCFLAGS+="-Wno-error -O2 -flto=thin -fno-stack-protector" || exit 1
+
+            - name: Create Kernel ZIP
+              run: |
+                  echo "Creating kernel ZIP..."
+
+                  if [ ${{ inputs.use_make }} == true ]; then
+                    # Copy Image for make=true builds
+                    cp $CONFIG/common/out/arch/arm64/boot/Image AnyKernel3/Image
+                  else
+                    # Copy Image for make=false builds based on Android version
+                    if [ "${{ inputs.android_version }}" = "android12" ] || [ "${{ inputs.android_version }}" = "android13" ]; then
+                      echo "Copying images for Android 12/13..."
+                      cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image AnyKernel3/Image
+                    elif [ "${{ inputs.android_version }}" = "android14" ] || [ "${{ inputs.android_version }}" = "android15" ]; then
+                      echo "Copying images for Android 14/15..."
+                      cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image AnyKernel3/Image
+                    fi
+                  fi
+
+                  # Create ZIP file
+                  cd AnyKernel3
+                  # Use actual sublevel for LTS builds if available
+                  SUBLEVEL_FOR_NAME="${{ inputs.sub_level }}"
+                  if [ -n "$ACTUAL_SUBLEVEL" ]; then
+                    SUBLEVEL_FOR_NAME="$ACTUAL_SUBLEVEL"
+                  fi
+                  ZIP_NAME="WKSU-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.$SUBLEVEL_FOR_NAME-${{ inputs.os_patch_level }}-AnyKernel3.zip"
+                  echo "Creating zip file: $ZIP_NAME..."
+                  zip -r "../$ZIP_NAME" ./*
+
+            - name: Upload Build Artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: WKSU-kernel-${{ env.CONFIG }}
+                  path: |
+                      *.zip
+                      *.img.gz
+                      *Image*
