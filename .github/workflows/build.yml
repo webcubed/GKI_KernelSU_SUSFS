@@ -149,33 +149,19 @@ jobs:
               run: |
                   echo "Changing to configuration directory: $CONFIG..."
                   cd "$CONFIG"
-
+        
                   echo "Applying SUSFS patches..."
 
                   # Copy SUSFS patches
                   cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
-                  cd common
-                  patch -p1 --forward < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch
-                  cd ..
                   cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
                   cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-
-                  echo "Applying SUSFS patches for WKSU..."
+                  echo "Applying SUSFS patches for SukiSU..."
                   cd ./KernelSU
-                  cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-                  patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
-
-                  cp ../../kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch ./
-                  patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
-
-                  cp ../../kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
-                  patch -p1 --forward < fix_rules.c.patch
-
-                  cp ../../kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch ./
-                  patch -p1 --forward < fix_sucompat.c.patch
-
-                  cp ../../kernel_patches/wild/susfs_fix_patches/v1.5.9/fix_kernel_compat.c.patch ./
-                  patch -p1 --forward < fix_kernel_compat.c.patch
+                  echo "Applying SukiSU specific SUSFS patch..."
+                  # Change to common directory and apply common SUSFS patch
+                  cd ../common
+                  patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
 
             - name: Getting KernelSU Version
               run: |
