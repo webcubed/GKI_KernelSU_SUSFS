@@ -149,7 +149,6 @@ jobs:
               run: |
                   echo "Changing to configuration directory: $CONFIG..."
                   cd "$CONFIG"
-        
                   echo "Applying SUSFS patches..."
 
                   # Copy SUSFS patches
